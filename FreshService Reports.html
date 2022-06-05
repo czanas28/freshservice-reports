@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title id="title"></title>
+    <style>
+      :root {
+        --bb: #5abcd9;
+        --gb: rgba(210, 210, 210, 0.5);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Trebuchet MS", "Lucida Sans Unicode", "Lucida Grande",
+          "Lucida Sans", Arial, sans-serif;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding: 1em;
+        background-color: var(--bb);
+        color: #fff;
+        padding-left: 10vw;
+        padding-right: 10vw;
+        gap: 5vw;
+      }
+      #banner {
+        flex-grow: 10;
+      }
+      h2 {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      #report_range {
+        font-weight: 300;
+        font-size: medium;
+      }
+      .inputs {
+        display: flex;
+        justify-content: space-evenly;
+        flex-grow: 4;
+      }
+      input[type="date"],
+      input[type="month"] {
+        border: none;
+        padding: 0.1rem;
+        border-radius: 0.25rem;
+        font-weight: 600;
+        text-align: center;
+        gap: 1rem;
+      }
+      select {
+        border: none;
+        border-radius: 0.25rem;
+        padding: 0.15rem 0.15rem 0.15rem 0.35rem;
+      }
+      section {
+        width: 80vw;
+        margin: auto;
+        display: flex;
+        gap: 10px;
+      }
+      section > * {
+        flex-basis: 10%;
+        padding: 1em;
+        background-color: var(--gb);
+      }
+      #submit {
+        padding: 0.2rem 1rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 0.25rem;
+        background-color: #fff;
+      }
+      #submit:hover {
+        background-color: var(--gb);
+        color: #fff;
+      }
+      .result_card {
+        margin-top: 2rem;
+        color: var(--bb);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        align-items: center;
+      }
+      .result_card > p {
+        font-size: 650%;
+      }
+
+      .flex_basis_100 {
+        flex-basis: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 
+      Weekly: How many tickets did each Helpdesk agent create
+      Monthly:
+        # Closed tickets per Group (AV, HD, CTC, Desktop, Presidio, CBC, Developers)
+        # Closed JAWS tickets
+        # Closed High Priority Tickets
+        # Closed Urgent Priority Tickets
+        # Closed Equipment Moves
+    -->
+    <div id="container" class="container">
+      <header id="header">
+        <div id="banner">
+          <h2 id="header_h2"></h2>
+        </div>
+        <div id="select">
+          <select
+            id="report"
+            onchange="formHandler.reportInputFields(document.getElementById('report').value)"
+          >
+            <option value="">Select a report</option>
+            <option value="helpdeskPerAgent">Helpdesk per Agent</option>
+            <option value="monthlyReports">Monlthy Reports</option>
+          </select>
+        </div>
+        <div>
+          <button
+            id="submit"
+            type="button"
+            onclick="formHandler.onSubmit(document.getElementById('report').value)"
+            disabled
+          >
+            Submit
+          </button>
+        </div>
+      </header>
+      <section id="helpdeskPerAgent"></section>
+      <section id="monthlyReports"></section>
+      <section id="additionalMonthlyReports"></section>
+    </div>
+
+    <script type="application/javascript">
+      const reportName = "FreshService Reports";
+      const reportDataSpan = document.createElement("span");
+      const title = document.getElementById("title");
+      const header = document.getElementById("header_h2");
+      const helpdeskSection = document.getElementById("helpdeskPerAgent");
+      const monthlyReportsSection = document.getElementById("monthlyReports");
+      const additionalMonthlyReportsSection = document.getElementById(
+        "additionalMonthlyReports"
+      );
+      const submit = document.getElementById("submit");
+      title.innerText = reportName;
+      header.innerHTML = `<span>${reportName}</span>`;
+
+      const wait = async (ms) => {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      };
+
+      const ticketPriority = {
+        urgent: 4,
+        high: 3,
+      };
+
+      const ticketStatus = {
+        open: 2,
+        resolved: 4,
+        closed: 5,
+      };
+
+      const apiKey = ""; // The API key must be the API key of an Admin on Fresh Service
+      const encodedCreds = btoa(`${apiKey}:X`);
+      const api = "https://fljud13.freshservice.com/api/v2";
+      const creds = {
+        headers: {
+          Authorization: `Basic ${encodedCreds}`,
+        },
+      };
+
+      let helpdeskAgents = [
+        { id: 19002086708, name: "Roxanne Guel", tickets: 0 },
+        { id: 19002086710, name: "Joshua Gonzalez", tickets: 0 },
+        { id: 19002365053, name: "Esteban Sanjurjo", tickets: 0 },
+        { id: "null", name: "Unassigned", tickets: 0 },
+      ];
+
+      let groups = [
+        { id: 19000249546, name: "AV", tickets: 0 },
+        { id: 19000249545, name: "CBC", tickets: 0 },
+        { id: 19000443105, name: "Collaboration", tickets: 0 },
+        { id: 19000443106, name: "Data Center", tickets: 0 },
+        { id: 19000249544, name: "Desktop", tickets: 0 },
+        { id: 19000245713, name: "Developers", tickets: 0 },
+        { id: 19000444033, name: "Equipment Rental", tickets: 0 },
+        { id: 19000443349, name: "FAC", tickets: 0 },
+        // { id: 19000249547, name: "Facilities" },
+        { id: 19000249543, name: "Helpdesk", tickets: 0 },
+        { id: 19000245714, name: "Network", tickets: 0 },
+        { id: 19000444032, name: "PAR", tickets: 0 },
+      ];
+
+      let qty = [
+        { name: "AV", tickets: 0, groups: ["AV", "Equipment Rental"] },
+        {
+          name: "CBC",
+          tickets: 0,
+          groups: ["CBC", "Equipment Rental", "FAC", "PAR"],
+        },
+        { name: "Desktop", tickets: 0, groups: ["Desktop", "PAR"] },
+        { name: "Developers", tickets: 0, groups: ["Developers"] },
+        {
+          name: "Engineers",
+          tickets: 0,
+          groups: ["Collaboration", "Data Center", "Network", "PAR"],
+        },
+        { name: "Helpdesk", tickets: 0, groups: ["Helpdesk", "PAR"] },
+      ];
+
+      let closedJAWSTickets = { name: "JAWS", qty: 0 };
+      let closedHighTickets = { name: "High", qty: 0 };
+      let closedUrgentTickets = { name: "Urgent", qty: 0 };
+
+      let formHandler = {
+        //form input variables and methods
+        startDate: "",
+        endDate: "",
+        month: [],
+        setDate({ value, id }) {
+          this[id] = value;
+          this.disableSubmitButton();
+        },
+        setMonth({ value }) {
+          const selectedValue = value.split("-"); //creates an array with the year and month of the Month input value
+          const days = new Date( // gets the total days in the selected Month
+            selectedValue[0],
+            selectedValue[1],
+            0
+          ).getDate();
+
+          const startDate = `${value}-01`;
+          const endDate = `${value}-${days}`;
+
+          this.month.push(startDate, endDate);
+          this.disableSubmitButton();
+        },
+        clearReportFields() {
+          // cleans up the form on report change
+          reportDataSpan.remove();
+          let hdChildren = Array.from(helpdeskSection.children);
+          if (hdChildren.length > 0) {
+            for (let i = 0; i < hdChildren?.length; i++) {
+              hdChildren[i].remove();
+            }
+            helpdeskAgents.forEach((agent) => {
+              agent.tickets = [];
+            });
+          }
+        },
+        reportInputFields(value) {
+          // Creates the report input fields
+          const month = document.getElementById("monthInput");
+          const startDateInput = document.getElementById(
+            "startDateInputContainer"
+          );
+          const endDateInput = document.getElementById("endDateInputContainer");
+          if (value === "helpdeskPerAgent") {
+            if (month) {
+              this.clearInputValue(month.children[1].id);
+              this.clearReportFields();
+              month.remove();
+            }
+
+            const start = document.createElement("div");
+            start.id = "startDateInputContainer";
+            start.innerHTML = `
+                        <label for="startDate">Start Date</label>
+                        <input
+                          id="startDate"
+                          type="date"
+                          name="startDate"
+                          onchange="formHandler.setDate({ value: document.getElementById('startDate').value, id: document.getElementById('startDate').id})"
+                        />
+                        `;
+
+            const end = document.createElement("div");
+            end.id = "endDateInputContainer";
+            end.innerHTML = `
+                        <label for="endDate">End Date</label>
+                        <input
+                          id="endDate"
+                          type="date"
+                          name="endDate"
+                          onchange="formHandler.setDate({ value: document.getElementById('endDate').value, id: document.getElementById('endDate').id})"
+                        />
+                      `;
+            const header = document.getElementById("header");
+            header.insertBefore(start, header.children[1]);
+            header.insertBefore(end, header.children[2]);
+            return;
+          }
+          if (value === "monthlyReports") {
+            if (startDateInput) {
+              this.clearInputValue(undefined);
+              this.clearReportFields();
+              startDateInput.remove();
+              endDateInput.remove();
+            }
+            const div = document.createElement("div");
+            div.id = "monthInput";
+            div.innerHTML = `
+                        <label for="month">Month</label>
+                        <input
+                          id="month"
+                          type="month"
+                          name="month"
+                          onchange="formHandler.setMonth({ value: document.getElementById('month').value, id: document.getElementById('month').id})"
+                        />
+                      `;
+            const header = document.getElementById("header");
+            header.insertBefore(div, header.children[1]);
+            return;
+          }
+          if (!value) {
+            month
+              ? (this.clearInputValue(month.children[1].id), month.remove())
+              : null;
+            startDateInput
+              ? (this.clearInputValue(startDateInput.id),
+                startDateInput.remove(),
+                endDateInput.remove())
+              : null;
+            this.clearReportFields();
+          } else {
+            return;
+          }
+        },
+        disableSubmitButton() {
+          // disables the submit button until the form fields are filled out
+          if ((this.startDate && this.endDate) || this.month.length > 0) {
+            submit.disabled = false;
+          } else {
+            submit.disabled = true;
+          }
+        },
+        clearInputValue(value) {
+          // clears the input variables
+          if (value === "month") {
+            this.month = [];
+          } else {
+            this.startDate = "";
+            this.endDate = "";
+          }
+          this.disableSubmitButton();
+        },
+        dateValidation() {
+          // all date validation done before the helpdesk report can be submitted
+
+          const currentDate = new Date().getDate();
+          const currentMonth = new Date().getMonth() + 1;
+
+          const startDate = this.startDate.split("-");
+          const endDate = this.endDate.split("-");
+
+          const startDateDayInt = parseInt(startDate[2]);
+          const startDateMonthInt = parseInt(startDate[1]);
+          const endDateDayInt = parseInt(endDate[2]);
+          const endDateMonthInt = parseInt(endDate[1]);
+
+          if (startDateMonthInt > currentMonth) {
+            alert("The Start Date cannot be greater than the current date.");
+            return false;
+          }
+          if (startDateMonthInt > endDateMonthInt) {
+            alert("The Starting Month must be less than the ending Month");
+            return false;
+          }
+          if (
+            startDateMonthInt === endDateMonthInt &&
+            startDateDayInt > endDateDayInt
+          ) {
+            alert("The Starting Day must be less than the ending Day");
+            return false;
+          }
+          if (
+            (endDateDayInt > currentDate && endDateMonthInt === currentMonth) ||
+            (endDateDayInt > currentDate && endDateMonthInt > currentMonth)
+          ) {
+            alert("The end date cannot exceed the current date");
+            return false;
+          }
+
+          return true;
+        },
+        async onSubmit(value) {
+          if (value === "helpdeskPerAgent") {
+            const check = this.dateValidation();
+            if (!check) return;
+          }
+
+          this.clearReportFields();
+
+          this[value](); // run the selected report -- Maybe remove passing the value
+
+          submit.disabled = true;
+          await wait(4000);
+          submit.disabled = false;
+        },
+        async helpdeskPerAgent() {
+          // const helpdeskReport = "Helpdesk Stats";
+          // title.innerText = `${reportName} ${helpdeskReport} From ${this.startDate} To ${this.endDate}`;
+
+          // reportDataSpan.innerText = `${helpdeskReport} From ${this.startDate} To ${this.endDate}`;
+          // reportDataSpan.id = "report_range";
+          // header.appendChild(reportDataSpan);
+
+          helpdeskAgents.forEach(async (agent) => {
+            try {
+              const uri = encodeURI(
+                `${api}/tickets/filter?query="created_at:>'${formHandler.startDate}' AND created_at:<'${formHandler.endDate}' AND agent_id:${agent.id}"&per_page=100`
+              );
+              const res = await fetch(uri, creds);
+              const data = await res.json();
+              agent.tickets = agent.tickets + data.total;
+            } catch (error) {
+              console.log(error);
+              return;
+            }
+          });
+          await wait(1500);
+          displayHelpdeskTickets();
+        },
+        async monthlyReports() {
+          // const monthlyReports = "Monthly Reports";
+          // title.innerText = `${reportName} ${monthlyReports} From ${this.month[0]} To ${this.month[1]}`;
+
+          // reportDataSpan.innerText = `${monthlyReports} From ${this.month[0]} To ${this.month[1]}`;
+          // reportDataSpan.id = "report_range";
+          // header.appendChild(reportDataSpan);
+
+          // Tickets by group
+          try {
+            groups.forEach(async (group) => {
+              let uri = encodeURI(
+                `${api}/tickets/filter?query="created_at:>'${formHandler.month[0]}' AND created_at:<'${formHandler.month[1]}' AND group_id:${group.id}"&per_page=100`
+              );
+              const res = await fetch(uri, creds);
+              const data = await res.json();
+              group.tickets = group.tickets + data.total;
+            });
+          } catch (error) {
+            console.log(error);
+            return;
+          }
+
+          // Dev Tickets
+          try {
+            const jaws = 19000159476;
+            const dev = 19000252423;
+            let uri = encodeURI(
+              `${api}/tickets/filter?query="created_at:>'${formHandler.month[0]}' AND created_at:<'${formHandler.month[1]}' AND group_id:19000245713 AND status:${ticketStatus.closed}"`
+            );
+            const res = await fetch(uri, creds);
+            const data = await res.json();
+
+            data.tickets.forEach((ticket) => {
+              if (ticket.custom_fields.dev === "JAWS") {
+                closedJAWSTickets.qty = closedJAWSTickets.qty + 1;
+              }
+            });
+          } catch (error) {
+            console.log(error);
+            return;
+          }
+          // closed high tickets
+          try {
+            let uri = encodeURI(
+              `${api}/tickets/filter?query="created_at:>'${formHandler.month[0]}' AND created_at:<'${formHandler.month[1]}' AND priority:${ticketPriority.high}"`
+            );
+            const res = await fetch(uri, creds);
+            const data = await res.json();
+
+            closedHighTickets.qty = data.total;
+          } catch (error) {
+            console.log(error);
+            return;
+          }
+
+          // closed urgent tickets
+          try {
+            let uri = encodeURI(
+              `${api}/tickets/filter?query="created_at:>'${formHandler.month[0]}' AND created_at:<'${formHandler.month[1]}' AND priority:${ticketPriority.urgent}"`
+            );
+            const res = await fetch(uri, creds);
+            const data = await res.json();
+
+            closedUrgentTickets.qty = data.total;
+          } catch (error) {
+            console.log(error);
+            return;
+          }
+          console.log(closedHighTickets);
+          await wait(1500);
+          sortGroupTickets(); // create a promise to await results
+          displayGroupTickets();
+          additionalMonthlyReports();
+        },
+      };
+
+      const displayHelpdeskTickets = () => {
+        helpdeskAgents.forEach((agent) => {
+          const div = document.createElement("div");
+          div.classList.add("result_card", "flex_basis_100");
+          div.innerHTML = `<h1 id=${agent.id}>${agent.name}</h1><p>${agent.tickets}</p>`;
+          helpdeskSection.appendChild(div);
+        });
+      };
+
+      const sortGroupTickets = async () => {
+        groups.forEach((group) => {
+          qty.forEach((q) => {
+            if (q.groups.includes(group.name)) {
+              q.tickets = q.tickets + group.tickets;
+            }
+          });
+        });
+        return;
+      };
+      const displayGroupTickets = () => {
+        qty.forEach((q) => {
+          const div = document.createElement("div");
+          div.classList.add("result_card", "flex_basis_100");
+          div.innerHTML = `<h1>${q.name}</h1><p>${q.tickets}</p>`;
+          monthlyReportsSection.appendChild(div);
+        });
+      };
+
+      const additionalMonthlyReports = () => {
+        const jawsDiv = document.createElement("div");
+        jawsDiv.classList.add("result_card", "flex_basis_100");
+        jawsDiv.id = closedJAWSTickets.name;
+        jawsDiv.innerHTML = `<h1>Closed ${closedJAWSTickets.name} Tickets</h1><p>${closedJAWSTickets.qty}</p>`;
+        additionalMonthlyReportsSection.appendChild(jawsDiv);
+
+        const highDiv = document.createElement("div");
+        highDiv.classList.add("result_card", "flex_basis_100");
+        highDiv.id = closedHighTickets.name;
+        highDiv.innerHTML = `<h1>Closed ${closedHighTickets.name} Priority Tickets</h1><p>${closedHighTickets.qty}</p>`;
+        additionalMonthlyReportsSection.appendChild(highDiv);
+
+        const urgentDiv = document.createElement("div");
+        urgentDiv.classList.add("result_card", "flex_basis_100");
+        urgentDiv.id = closedUrgentTickets.name;
+        urgentDiv.innerHTML = `<h1>Closed ${closedUrgentTickets.name} Priority Tickets</h1><p>${closedUrgentTickets.qty}</p>`;
+        additionalMonthlyReportsSection.appendChild(urgentDiv);
+      };
+      // KEEPING THIS CODE FOR IDEAS ON FACILITIES ANNUAL REPORT
+
+      // let pages = Math.ceil(data.total / 100);
+      // console.log(group.name, data.total);
+      // if (pages > 1) {
+      //   for (let i = 1; i <= pages; i++) {
+      //     uri = encodeURI(
+      //       `${api}/tickets/filter?query="created_at:>'${formHandler.month[0]}' AND created_at:<'${formHandler.month[1]}' AND group_id:${group.id}"&per_page=100&page=${i}`
+      //     );
+      //     const res = await fetch(uri, creds);
+      //     const data = await res.json();
+
+      //     group.tickets = [...group.tickets, ...data.tickets];
+      //   }
+      // } else {
+      //   group.tickets = [...group.tickets, ...data.tickets];
+      // }
+    </script>
+  </body>
+</html>
